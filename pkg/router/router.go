@@ -1,21 +1,21 @@
 package router
 
 import (
-    "github.com/gin-gonic/gin"
-    "gorm.io/gorm"
-    "golang/internal/team"
-    "golang/internal/asset"
+	"github.com/nghianx1211/golang/internal/asset"
+	"github.com/nghianx1211/golang/internal/team"
+
+	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
 )
 
 func Setup(db *gorm.DB) *gin.Engine {
-    r := gin.Default()
+	r := gin.Default()
 
-    teamGroup := r.Group("/teams")
-    team.RegisterTeamRoutes(teamGroup, db)
+	teamGroup := r.Group("/teams")
+	team.RegisterTeamRoutes(teamGroup, db)
 
-    userGroup := r.Group("/assets")
-    asset.RegisterRoutes(userGroup, db)
+	userGroup := r.Group("/assets")
+	asset.RegisterRoutes(userGroup, db)
 
-
-    return r
+	return r
 }

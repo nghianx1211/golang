@@ -2,9 +2,9 @@ package asset
 
 import (
     "net/http"
-    "strconv"
 
     "github.com/gin-gonic/gin"
+    "github.com/google/uuid"
 )
 
 type Handler struct {
@@ -15,15 +15,20 @@ func NewHandler(service *Service) *Handler {
     return &Handler{Service: service}
 }
 
-// Folder
+// ---------- Folder ----------
 
 func (h *Handler) CreateFolder(c *gin.Context) {
     var input struct {
         Name    string `json:"name" binding:"required"`
-        OwnerID uint   `json:"ownerId" binding:"required"`
+        OwnerID string `json:"ownerId" binding:"required"`
     }
     if err := c.ShouldBindJSON(&input); err != nil {
         c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+        return
+    }
+
+    if _, err := uuid.Parse(input.OwnerID); err != nil {
+        c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid ownerId UUID"})
         return
     }
 
@@ -37,46 +42,68 @@ func (h *Handler) CreateFolder(c *gin.Context) {
 }
 
 func (h *Handler) GetFolder(c *gin.Context) {
-    id, _ := strconv.Atoi(c.Param("folderId"))
-    folder, err := h.Service.GetFolder(uint(id))
+    folderID := c.Param("folderId")
+    if _, err := uuid.Parse(folderID); err != nil {
+        c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid folderId UUID"})
+        return
+    }
+
+    folder, err := h.Service.GetFolder(folderID)
     if err != nil {
         c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
         return
     }
+
     c.JSON(http.StatusOK, folder)
 }
 
 func (h *Handler) UpdateFolder(c *gin.Context) {
-    id, _ := strconv.Atoi(c.Param("folderId"))
-    var input struct{ Name string `json:"name"` }
+    folderID := c.Param("folderId")
+    if _, err := uuid.Parse(folderID); err != nil {
+        c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid folderId UUID"})
+        return
+    }
 
+    var input struct {
+        Name string `json:"name"`
+    }
     if err := c.ShouldBindJSON(&input); err != nil {
         c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
         return
     }
 
-    err := h.Service.UpdateFolderName(uint(id), input.Name)
-    if err != nil {
+    if err := h.Service.UpdateFolderName(folderID, input.Name); err != nil {
         c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
         return
     }
+
     c.JSON(http.StatusOK, gin.H{"message": "Folder updated"})
 }
 
 func (h *Handler) DeleteFolder(c *gin.Context) {
-    id, _ := strconv.Atoi(c.Param("folderId"))
-    h.Service.DeleteFolder(uint(id))
+    folderID := c.Param("folderId")
+    if _, err := uuid.Parse(folderID); err != nil {
+        c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid folderId UUID"})
+        return
+    }
+
+    h.Service.DeleteFolder(folderID)
     c.JSON(http.StatusOK, gin.H{"message": "Folder deleted"})
 }
 
-// Note
+// ---------- Note ----------
 
 func (h *Handler) CreateNote(c *gin.Context) {
-    folderID, _ := strconv.Atoi(c.Param("folderId"))
+    folderID := c.Param("folderId")
+    if _, err := uuid.Parse(folderID); err != nil {
+        c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid folderId UUID"})
+        return
+    }
+
     var input struct {
         Title   string `json:"title"`
         Body    string `json:"body"`
-        OwnerID uint   `json:"ownerId"`
+        OwnerID string `json:"ownerId"`
     }
 
     if err := c.ShouldBindJSON(&input); err != nil {
@@ -84,7 +111,12 @@ func (h *Handler) CreateNote(c *gin.Context) {
         return
     }
 
-    note, err := h.Service.CreateNote(uint(folderID), input.Title, input.Body, input.OwnerID)
+    if _, err := uuid.Parse(input.OwnerID); err != nil {
+        c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid ownerId UUID"})
+        return
+    }
+
+    note, err := h.Service.CreateNote(folderID, input.Title, input.Body, input.OwnerID)
     if err != nil {
         c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
         return
@@ -94,40 +126,64 @@ func (h *Handler) CreateNote(c *gin.Context) {
 }
 
 func (h *Handler) GetNote(c *gin.Context) {
-    noteID, _ := strconv.Atoi(c.Param("noteId"))
-    note, err := h.Service.GetNote(uint(noteID))
+    noteID := c.Param("noteId")
+    if _, err := uuid.Parse(noteID); err != nil {
+        c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid noteId UUID"})
+        return
+    }
+
+    note, err := h.Service.GetNote(noteID)
     if err != nil {
         c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
         return
     }
+
     c.JSON(http.StatusOK, note)
 }
 
 func (h *Handler) UpdateNote(c *gin.Context) {
-    noteID, _ := strconv.Atoi(c.Param("noteId"))
-    var input struct{ Title, Body string }
+    noteID := c.Param("noteId")
+    if _, err := uuid.Parse(noteID); err != nil {
+        c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid noteId UUID"})
+        return
+    }
+
+    var input struct {
+        Title string `json:"title"`
+        Body  string `json:"body"`
+    }
 
     if err := c.ShouldBindJSON(&input); err != nil {
         c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
         return
     }
 
-    h.Service.UpdateNote(uint(noteID), input.Title, input.Body)
+    h.Service.UpdateNote(noteID, input.Title, input.Body)
     c.JSON(http.StatusOK, gin.H{"message": "Note updated"})
 }
 
 func (h *Handler) DeleteNote(c *gin.Context) {
-    noteID, _ := strconv.Atoi(c.Param("noteId"))
-    h.Service.DeleteNote(uint(noteID))
+    noteID := c.Param("noteId")
+    if _, err := uuid.Parse(noteID); err != nil {
+        c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid noteId UUID"})
+        return
+    }
+
+    h.Service.DeleteNote(noteID)
     c.JSON(http.StatusOK, gin.H{"message": "Note deleted"})
 }
 
-// Sharing
+// ---------- Sharing ----------
 
 func (h *Handler) ShareFolder(c *gin.Context) {
-    folderID, _ := strconv.Atoi(c.Param("folderId"))
+    folderID := c.Param("folderId")
+    if _, err := uuid.Parse(folderID); err != nil {
+        c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid folderId UUID"})
+        return
+    }
+
     var input struct {
-        UserID uint   `json:"userId"`
+        UserID string `json:"userId"`
         Access string `json:"access"`
     }
     if err := c.ShouldBindJSON(&input); err != nil {
@@ -135,22 +191,41 @@ func (h *Handler) ShareFolder(c *gin.Context) {
         return
     }
 
-    h.Service.ShareFolder(uint(folderID), input.UserID, input.Access)
+    if _, err := uuid.Parse(input.UserID); err != nil {
+        c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid userId UUID"})
+        return
+    }
+
+    h.Service.ShareFolder(folderID, input.UserID, input.Access)
     c.JSON(http.StatusOK, gin.H{"message": "Folder shared"})
 }
 
 func (h *Handler) RevokeFolderShare(c *gin.Context) {
-    folderID, _ := strconv.Atoi(c.Param("folderId"))
-    userID, _ := strconv.Atoi(c.Param("userId"))
+    folderID := c.Param("folderId")
+    userID := c.Param("userId")
 
-    h.Service.RevokeFolderShare(uint(folderID), uint(userID))
+    if _, err := uuid.Parse(folderID); err != nil {
+        c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid folderId UUID"})
+        return
+    }
+    if _, err := uuid.Parse(userID); err != nil {
+        c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid userId UUID"})
+        return
+    }
+
+    h.Service.RevokeFolderShare(folderID, userID)
     c.JSON(http.StatusOK, gin.H{"message": "Folder share revoked"})
 }
 
 func (h *Handler) ShareNote(c *gin.Context) {
-    noteID, _ := strconv.Atoi(c.Param("noteId"))
+    noteID := c.Param("noteId")
+    if _, err := uuid.Parse(noteID); err != nil {
+        c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid noteId UUID"})
+        return
+    }
+
     var input struct {
-        UserID uint   `json:"userId"`
+        UserID string `json:"userId"`
         Access string `json:"access"`
     }
     if err := c.ShouldBindJSON(&input); err != nil {
@@ -158,14 +233,28 @@ func (h *Handler) ShareNote(c *gin.Context) {
         return
     }
 
-    h.Service.ShareNote(uint(noteID), input.UserID, input.Access)
+    if _, err := uuid.Parse(input.UserID); err != nil {
+        c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid userId UUID"})
+        return
+    }
+
+    h.Service.ShareNote(noteID, input.UserID, input.Access)
     c.JSON(http.StatusOK, gin.H{"message": "Note shared"})
 }
 
 func (h *Handler) RevokeNoteShare(c *gin.Context) {
-    noteID, _ := strconv.Atoi(c.Param("noteId"))
-    userID, _ := strconv.Atoi(c.Param("userId"))
+    noteID := c.Param("noteId")
+    userID := c.Param("userId")
 
-    h.Service.RevokeNoteShare(uint(noteID), uint(userID))
+    if _, err := uuid.Parse(noteID); err != nil {
+        c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid noteId UUID"})
+        return
+    }
+    if _, err := uuid.Parse(userID); err != nil {
+        c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid userId UUID"})
+        return
+    }
+
+    h.Service.RevokeNoteShare(noteID, userID)
     c.JSON(http.StatusOK, gin.H{"message": "Note share revoked"})
 }

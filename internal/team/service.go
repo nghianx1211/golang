@@ -2,8 +2,10 @@ package team
 
 import (
 	"errors"
+
+	"github.com/nghianx1211/golang/internal/model"
+
 	"gorm.io/gorm"
-	"golang/internal/model"
 )
 
 type Service struct {
@@ -14,9 +16,9 @@ func NewService(db *gorm.DB) *Service {
 	return &Service{DB: db}
 }
 
-func (s *Service) CreateTeam(teamName string, mainManagerID uint) (*model.Team, error) {
+func (s *Service) CreateTeam(teamName string, mainManagerID string) (*model.Team, error) {
 	var manager model.User
-	if err := s.DB.First(&manager, mainManagerID).Error; err != nil {
+	if err := s.DB.First(&manager, "user_id = ?", mainManagerID).Error; err != nil {
 		return nil, errors.New("main manager not found")
 	}
 
@@ -32,37 +34,37 @@ func (s *Service) CreateTeam(teamName string, mainManagerID uint) (*model.Team, 
 	return team, nil
 }
 
-func (s *Service) AddMember(teamID, userID uint) error {
+func (s *Service) AddMember(teamID, userID string) error {
 	var team model.Team
-	if err := s.DB.Preload("Members").First(&team, teamID).Error; err != nil {
+	if err := s.DB.Preload("Members").First(&team, "team_id = ?", teamID).Error; err != nil {
 		return errors.New("team not found")
 	}
 
 	var user model.User
-	if err := s.DB.First(&user, userID).Error; err != nil {
+	if err := s.DB.First(&user, "user_id = ?", userID).Error; err != nil {
 		return errors.New("user not found")
 	}
 
 	return s.DB.Model(&team).Association("Members").Append(&user)
 }
 
-func (s *Service) RemoveMember(teamID, userID uint) error {
+func (s *Service) RemoveMember(teamID, userID string) error {
 	var team model.Team
-	if err := s.DB.Preload("Members").First(&team, teamID).Error; err != nil {
+	if err := s.DB.Preload("Members").First(&team, "team_id = ?", teamID).Error; err != nil {
 		return errors.New("team not found")
 	}
 
 	var user model.User
-	if err := s.DB.First(&user, userID).Error; err != nil {
+	if err := s.DB.First(&user, "user_id = ?", userID).Error; err != nil {
 		return errors.New("user not found")
 	}
 
 	return s.DB.Model(&team).Association("Members").Delete(&user)
 }
 
-func (s *Service) AddManager(teamID, requesterID, userID uint) error {
+func (s *Service) AddManager(teamID, requesterID, userID string) error {
 	var team model.Team
-	if err := s.DB.Preload("Managers").First(&team, teamID).Error; err != nil {
+	if err := s.DB.Preload("Managers").First(&team, "team_id = ?", teamID).Error; err != nil {
 		return errors.New("team not found")
 	}
 
@@ -71,16 +73,16 @@ func (s *Service) AddManager(teamID, requesterID, userID uint) error {
 	}
 
 	var user model.User
-	if err := s.DB.First(&user, userID).Error; err != nil {
+	if err := s.DB.First(&user, "user_id = ?", userID).Error; err != nil {
 		return errors.New("user not found")
 	}
 
 	return s.DB.Model(&team).Association("Managers").Append(&user)
 }
 
-func (s *Service) RemoveManager(teamID, managerID uint) error {
+func (s *Service) RemoveManager(teamID, managerID string) error {
 	var team model.Team
-	if err := s.DB.Preload("Managers").First(&team, teamID).Error; err != nil {
+	if err := s.DB.Preload("Managers").First(&team, "team_id = ?", teamID).Error; err != nil {
 		return errors.New("team not found")
 	}
 
@@ -93,28 +95,28 @@ func (s *Service) RemoveManager(teamID, managerID uint) error {
 	}
 
 	var user model.User
-	if err := s.DB.First(&user, managerID).Error; err != nil {
+	if err := s.DB.First(&user, "user_id = ?", managerID).Error; err != nil {
 		return errors.New("manager not found")
 	}
 
 	return s.DB.Model(&team).Association("Managers").Delete(&user)
 }
 
-func (s *Service) GetTeamAssets(teamID uint) ([]model.Folder, error) {
-    var team model.Team
-    if err := s.DB.Preload("Members").First(&team, teamID).Error; err != nil {
-        return nil, err
-    }
+func (s *Service) GetTeamAssets(teamID string) ([]model.Folder, error) {
+	var team model.Team
+	if err := s.DB.Preload("Members").First(&team, "team_id = ?", teamID).Error; err != nil {
+		return nil, err
+	}
 
-    var memberIDs []uint
-    for _, m := range team.Members {
-        memberIDs = append(memberIDs, m.UserID)
-    }
+	var memberIDs []string
+	for _, m := range team.Members {
+		memberIDs = append(memberIDs, m.UserID)
+	}
 
-    var assets []model.Folder
-    if err := s.DB.Where("owner_id IN ?", memberIDs).Preload("Notes").Find(&assets).Error; err != nil {
-        return nil, err
-    }
+	var assets []model.Folder
+	if err := s.DB.Where("owner_id IN ?", memberIDs).Preload("Notes").Find(&assets).Error; err != nil {
+		return nil, err
+	}
 
-    return assets, nil
+	return assets, nil
 }

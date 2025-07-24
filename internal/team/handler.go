@@ -2,9 +2,9 @@ package team
 
 import (
 	"net/http"
-	"strconv"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 )
 
 type Handler struct {
@@ -17,12 +17,17 @@ func NewHandler(service *Service) *Handler {
 
 func (h *Handler) CreateTeam(c *gin.Context) {
 	var input struct {
-		TeamName     string `json:"teamName" binding:"required"`
-		MainManagerID uint   `json:"mainManagerId" binding:"required"`
+		TeamName      string `json:"teamName" binding:"required"`
+		MainManagerID string `json:"mainManagerId" binding:"required"`
 	}
 
 	if err := c.ShouldBindJSON(&input); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	if _, err := uuid.Parse(input.MainManagerID); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid UUID for mainManagerId"})
 		return
 	}
 
@@ -36,17 +41,25 @@ func (h *Handler) CreateTeam(c *gin.Context) {
 }
 
 func (h *Handler) AddMember(c *gin.Context) {
-	teamID, _ := strconv.Atoi(c.Param("teamId"))
+	teamID := c.Param("teamId")
 	var input struct {
-		UserID uint `json:"userId" binding:"required"`
+		UserID string `json:"userId" binding:"required"`
 	}
 
+	if _, err := uuid.Parse(teamID); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid teamId UUID"})
+		return
+	}
 	if err := c.ShouldBindJSON(&input); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
+	if _, err := uuid.Parse(input.UserID); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid userId UUID"})
+		return
+	}
 
-	if err := h.Service.AddMember(uint(teamID), input.UserID); err != nil {
+	if err := h.Service.AddMember(teamID, input.UserID); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
@@ -55,10 +68,19 @@ func (h *Handler) AddMember(c *gin.Context) {
 }
 
 func (h *Handler) RemoveMember(c *gin.Context) {
-	teamID, _ := strconv.Atoi(c.Param("teamId"))
-	memberID, _ := strconv.Atoi(c.Param("memberId"))
+	teamID := c.Param("teamId")
+	memberID := c.Param("memberId")
 
-	if err := h.Service.RemoveMember(uint(teamID), uint(memberID)); err != nil {
+	if _, err := uuid.Parse(teamID); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid teamId UUID"})
+		return
+	}
+	if _, err := uuid.Parse(memberID); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid memberId UUID"})
+		return
+	}
+
+	if err := h.Service.RemoveMember(teamID, memberID); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
@@ -67,18 +89,30 @@ func (h *Handler) RemoveMember(c *gin.Context) {
 }
 
 func (h *Handler) AddManager(c *gin.Context) {
-	teamID, _ := strconv.Atoi(c.Param("teamId"))
+	teamID := c.Param("teamId")
 	var input struct {
-		RequesterID uint `json:"requesterId" binding:"required"`
-		UserID      uint `json:"userId" binding:"required"`
+		RequesterID string `json:"requesterId" binding:"required"`
+		UserID      string `json:"userId" binding:"required"`
 	}
 
+	if _, err := uuid.Parse(teamID); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid teamId UUID"})
+		return
+	}
 	if err := c.ShouldBindJSON(&input); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
+	if _, err := uuid.Parse(input.RequesterID); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid requesterId UUID"})
+		return
+	}
+	if _, err := uuid.Parse(input.UserID); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid userId UUID"})
+		return
+	}
 
-	if err := h.Service.AddManager(uint(teamID), input.RequesterID, input.UserID); err != nil {
+	if err := h.Service.AddManager(teamID, input.RequesterID, input.UserID); err != nil {
 		c.JSON(http.StatusForbidden, gin.H{"error": err.Error()})
 		return
 	}
@@ -87,10 +121,19 @@ func (h *Handler) AddManager(c *gin.Context) {
 }
 
 func (h *Handler) RemoveManager(c *gin.Context) {
-	teamID, _ := strconv.Atoi(c.Param("teamId"))
-	managerID, _ := strconv.Atoi(c.Param("managerId"))
+	teamID := c.Param("teamId")
+	managerID := c.Param("managerId")
 
-	if err := h.Service.RemoveManager(uint(teamID), uint(managerID)); err != nil {
+	if _, err := uuid.Parse(teamID); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid teamId UUID"})
+		return
+	}
+	if _, err := uuid.Parse(managerID); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid managerId UUID"})
+		return
+	}
+
+	if err := h.Service.RemoveManager(teamID, managerID); err != nil {
 		c.JSON(http.StatusForbidden, gin.H{"error": err.Error()})
 		return
 	}
@@ -99,11 +142,17 @@ func (h *Handler) RemoveManager(c *gin.Context) {
 }
 
 func (h *Handler) GetTeamAssets(c *gin.Context) {
-    teamID, _ := strconv.Atoi(c.Param("teamId"))
-    assets, err := h.Service.GetTeamAssets(uint(teamID))
-    if err != nil {
-        c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
-        return
-    }
-    c.JSON(http.StatusOK, assets)
+	teamID := c.Param("teamId")
+
+	if _, err := uuid.Parse(teamID); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid teamId UUID"})
+		return
+	}
+
+	assets, err := h.Service.GetTeamAssets(teamID)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, assets)
 }

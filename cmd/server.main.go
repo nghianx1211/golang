@@ -1,20 +1,20 @@
 package main
 
 import (
-    "golang/internal/database"
-    "golang/pkg/router"
-	"golang/configs"
+	config "github.com/nghianx1211/golang/configs"
+	"github.com/nghianx1211/golang/internal/database"
+	"github.com/nghianx1211/golang/pkg/router"
 )
 
 func main() {
-    cfg, err := config.LoadConfig()
-    if err != nil {
-        panic(err)
-    }
+	cfg, err := config.LoadConfig()
+	if err != nil {
+		panic(err)
+	}
 
-    db := database.InitDB(cfg.DB_DSN)
-    database.Migrate(db)
+	db := database.InitDB(cfg.DB_DSN)
+	database.Migrate(db)
 
-    r := router.Setup(db)
-    r.Run(":8080")
+	r := router.Setup(db)
+	r.Run(":8080")
 }

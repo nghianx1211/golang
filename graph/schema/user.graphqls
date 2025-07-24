@@ -1,0 +1,27 @@
+type Query {
+  fetchUsers: [UserOutput!]!
+}
+
+type Mutation {
+  createUser(input: CreateUserInput!): UserOutput!
+  login(input: LoginInput!): String! # returns JWT
+}
+
+input CreateUserInput {
+  username: String!
+  email: String!
+  password: String!
+  role: String! # "manager" or "member"
+}
+
+input LoginInput {
+  email: String!
+  password: String!
+}
+
+type UserOutput {
+  userId: String!
+  username: String!
+  email: String!
+  role: String!
+}
