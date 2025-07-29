@@ -12,7 +12,7 @@ type Config struct {
 }
 
 func LoadConfig() (*Config, error) {
-    _ = godotenv.Load() // Load từ file .env, nếu không có thì đọc biến env hệ thống
+    _ = godotenv.Load() 
 
     dsn := fmt.Sprintf(
         "host=%s user=%s password=%s dbname=%s port=%s sslmode=%s",

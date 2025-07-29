@@ -1,8 +1,7 @@
 package database
 
 import (
-	"github.com/nghianx1211/golang/internal/model"
-
+	"user-service/internal/model"
 	"gorm.io/gorm"
 )
 
