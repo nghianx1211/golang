@@ -2,6 +2,15 @@
 
 package model
 
+import (
+	"user-service/internal/model"
+)
+
+type AuthPayload struct {
+	Token string      `json:"token"`
+	User  *model.User `json:"user"`
+}
+
 type CreateUserInput struct {
 	Username string `json:"username"`
 	Email    string `json:"email"`
@@ -18,11 +27,4 @@ type Mutation struct {
 }
 
 type Query struct {
-}
-
-type UserOutput struct {
-	UserID   string `json:"userId"`
-	Username string `json:"username"`
-	Email    string `json:"email"`
-	Role     string `json:"role"`
 }

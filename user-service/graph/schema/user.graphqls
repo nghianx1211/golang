@@ -1,17 +1,24 @@
-type Query {
-  fetchUsers: [UserOutput!]!
+scalar Time
+
+type User {
+  userID: ID!
+  username: String!
+  email: String!
+  role: String!
+  createdAt: Time!
+  updatedAt: Time!
 }
 
-type Mutation {
-  createUser(input: CreateUserInput!): UserOutput!
-  login(input: LoginInput!): String! # returns JWT
+type AuthPayload {
+  token: String!
+  user: User!
 }
 
 input CreateUserInput {
   username: String!
   email: String!
   password: String!
-  role: String! # "manager" or "member"
+  role: String!
 }
 
 input LoginInput {
@@ -19,9 +26,12 @@ input LoginInput {
   password: String!
 }
 
-type UserOutput {
-  userId: String!
-  username: String!
-  email: String!
-  role: String!
+type Query {
+  fetchUsers: [User!]!
+}
+
+type Mutation {
+  createUser(input: CreateUserInput!): User!
+  login(input: LoginInput!): AuthPayload!
+  logout: Boolean!
 }

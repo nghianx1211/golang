@@ -2,7 +2,6 @@ package database
 
 import (
 	"fmt"
-	"log"
 	"user-service/config"
 
 	"gorm.io/driver/postgres"
