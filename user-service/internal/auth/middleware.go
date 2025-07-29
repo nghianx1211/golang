@@ -7,6 +7,7 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+// AuthMiddleware checks JWT in Authorization header
 func AuthMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		authHeader := c.GetHeader("Authorization")
@@ -16,15 +17,17 @@ func AuthMiddleware() gin.HandlerFunc {
 		}
 
 		tokenStr := strings.TrimPrefix(authHeader, "Bearer ")
-		claims, err := ParseToken(tokenStr)
+
+		claims, err := ParseAccessToken(tokenStr)
 		if err != nil {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Invalid token"})
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Invalid or expired token"})
 			return
 		}
 
-		// Đưa UserID vào context
+		// Inject userID into request context
 		ctx := WithUserID(c.Request.Context(), claims.UserID)
 		c.Request = c.Request.WithContext(ctx)
+
 		c.Next()
 	}
 }

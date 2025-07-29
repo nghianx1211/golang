@@ -6,30 +6,93 @@ package resolver
 
 import (
 	"context"
-	"fmt"
+	"errors"
 	"user-service/graph/generated"
-	"user-service/graph/model"
-	model1 "user-service/internal/model"
+	gqlmodel "user-service/graph/model"
+	"user-service/internal/auth"
+	dbmodel "user-service/internal/model"
+	"golang.org/x/crypto/bcrypt"
 )
 
-// CreateUser is the resolver for the createUser field.
-func (r *mutationResolver) CreateUser(ctx context.Context, input model.CreateUserInput) (*model1.User, error) {
-	panic(fmt.Errorf("not implemented: CreateUser - createUser"))
+func (r *mutationResolver) CreateUser(ctx context.Context, input gqlmodel.CreateUserInput) (*dbmodel.User, error) {
+	if input.Role != "manager" && input.Role != "member" {
+		return nil, errors.New("invalid role: must be 'manager' or 'member'")
+	}
+
+	// Check duplicate email
+	var existing dbmodel.User
+	if err := r.DB.Where("email = ?", input.Email).First(&existing).Error; err == nil {
+		return nil, errors.New("email already in use")
+	}
+
+	hash, err := bcrypt.GenerateFromPassword([]byte(input.Password), bcrypt.DefaultCost)
+	if err != nil {
+		return nil, errors.New("failed to hash password")
+	}
+
+	user := &dbmodel.User{
+		Username:     input.Username,
+		Email:        input.Email,
+		Role:         input.Role,
+		PasswordHash: string(hash),
+	}
+
+	if err := r.DB.Create(user).Error; err != nil {
+		return nil, err
+	}
+
+	return user, nil
 }
 
-// Login is the resolver for the login field.
-func (r *mutationResolver) Login(ctx context.Context, input model.LoginInput) (*model.AuthPayload, error) {
-	panic(fmt.Errorf("not implemented: Login - login"))
+func (r *mutationResolver) Login(ctx context.Context, input gqlmodel.LoginInput) (*gqlmodel.AuthPayload, error) {
+	var user dbmodel.User
+	if err := r.DB.Where("email = ?", input.Email).First(&user).Error; err != nil {
+		return nil, errors.New("invalid credentials")
+	}
+
+	err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(input.Password))
+	if err != nil {
+		return nil, errors.New("invalid credentials")
+	}
+
+	token, err := auth.GenerateAccessToken(user.UserID)
+	if err != nil {
+		return nil, errors.New("failed to generate token")
+	}
+
+	return &gqlmodel.AuthPayload{
+		Token: token,
+		User:  &user,
+	}, nil
 }
 
-// Logout is the resolver for the logout field.
 func (r *mutationResolver) Logout(ctx context.Context) (bool, error) {
-	panic(fmt.Errorf("not implemented: Logout - logout"))
+	// JWT is stateless → client just deletes token (e.g. from localStorage or cookie)
+	return true, nil
 }
 
-// FetchUsers is the resolver for the fetchUsers field.
-func (r *queryResolver) FetchUsers(ctx context.Context) ([]*model1.User, error) {
-	panic(fmt.Errorf("not implemented: FetchUsers - fetchUsers"))
+func (r *queryResolver) FetchUsers(ctx context.Context) ([]*dbmodel.User, error) {
+	userID, ok := auth.GetUserIDFromContext(ctx)
+	if !ok {
+		return nil, errors.New("unauthenticated")
+	}
+
+	// Check role
+	var user dbmodel.User
+	if err := r.DB.First(&user, "user_id = ?", userID).Error; err != nil {
+		return nil, errors.New("user not found")
+	}
+
+	if user.Role != "manager" {
+		return nil, errors.New("forbidden: only managers can view user list")
+	}
+
+	var users []*dbmodel.User
+	if err := r.DB.Find(&users).Error; err != nil {
+		return nil, err
+	}
+
+	return users, nil
 }
 
 // Mutation returns generated.MutationResolver implementation.

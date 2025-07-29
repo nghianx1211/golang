@@ -9,8 +9,8 @@ import (
 )
 
 var (
-	accessSecret  = []byte(os.Getenv("JWT_SECRET"))        // ví dụ: abc123
-	refreshSecret = []byte(os.Getenv("JWT_REFRESH_SECRET")) // ví dụ: xyz456
+	accessSecret  = []byte(os.Getenv("JWT_SECRET"))
+	refreshSecret = []byte(os.Getenv("JWT_REFRESH_SECRET"))
 )
 
 type Claims struct {
