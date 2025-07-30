@@ -21,4 +21,5 @@ type DatabaseConfig struct {
 
 type JWTConfig struct {
 	Secret string
+	RefreshSecret string
 }

@@ -1,32 +1,40 @@
 package auth
 
 import (
-	"time"
 	"errors"
-	"os"
+	"fmt"
+	"time"
 
 	"github.com/golang-jwt/jwt/v5"
 )
 
 var (
-	accessSecret  = []byte(os.Getenv("JWT_SECRET"))
-	refreshSecret = []byte(os.Getenv("JWT_REFRESH_SECRET"))
+	accessSecret  string
+	refreshSecret string
 )
+
+func Init(access, refresh string) {
+	accessSecret = access
+	refreshSecret = refresh
+}
 
 type Claims struct {
 	UserID string `json:"userId"`
+	Role   string `json:"role"`
 	jwt.RegisteredClaims
 }
 
-func GenerateAccessToken(userID string) (string, error) {
+func GenerateAccessToken(userID string, userRole string) (string, error) {
+	fmt.Println("accessSecret =", accessSecret)
 	claims := Claims{
 		UserID: userID,
+		Role:   userRole,
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(15 * time.Minute)),
 		},
 	}
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	return token.SignedString(accessSecret)
+	return token.SignedString([]byte(accessSecret))
 }
 
 func GenerateRefreshToken(userID string) (string, error) {
@@ -37,7 +45,7 @@ func GenerateRefreshToken(userID string) (string, error) {
 		},
 	}
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	return token.SignedString(refreshSecret)
+	return token.SignedString([]byte(refreshSecret))
 }
 
 func ParseAccessToken(tokenStr string) (*Claims, error) {
@@ -48,9 +56,9 @@ func ParseRefreshToken(tokenStr string) (*Claims, error) {
 	return parseToken(tokenStr, refreshSecret)
 }
 
-func parseToken(tokenStr string, secret []byte) (*Claims, error) {
+func parseToken(tokenStr string, secret string) (*Claims, error) {
 	token, err := jwt.ParseWithClaims(tokenStr, &Claims{}, func(t *jwt.Token) (interface{}, error) {
-		return secret, nil
+		return []byte(secret), nil
 	})
 
 	if err != nil || !token.Valid {

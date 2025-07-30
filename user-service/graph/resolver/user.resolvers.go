@@ -7,14 +7,27 @@ package resolver
 import (
 	"context"
 	"errors"
+	"fmt"
 	"user-service/graph/generated"
 	gqlmodel "user-service/graph/model"
 	"user-service/internal/auth"
 	dbmodel "user-service/internal/model"
+
 	"golang.org/x/crypto/bcrypt"
 )
 
 func (r *mutationResolver) CreateUser(ctx context.Context, input gqlmodel.CreateUserInput) (*dbmodel.User, error) {
+	// Lấy thông tin từ context (đã được gắn ở middleware auth)
+	role, err := auth.GetRoleFromContext(ctx)
+	fmt.Println("role", role)
+	fmt.Println("err", err)
+	if err != nil || role != "manager" {
+		return nil, errors.New("unauthorized")
+}
+	if role != "manager" {
+		return nil, errors.New("only managers can create users")
+	}
+
 	if input.Role != "manager" && input.Role != "member" {
 		return nil, errors.New("invalid role: must be 'manager' or 'member'")
 	}
@@ -44,6 +57,7 @@ func (r *mutationResolver) CreateUser(ctx context.Context, input gqlmodel.Create
 	return user, nil
 }
 
+
 func (r *mutationResolver) Login(ctx context.Context, input gqlmodel.LoginInput) (*gqlmodel.AuthPayload, error) {
 	var user dbmodel.User
 	if err := r.DB.Where("email = ?", input.Email).First(&user).Error; err != nil {
@@ -55,7 +69,7 @@ func (r *mutationResolver) Login(ctx context.Context, input gqlmodel.LoginInput)
 		return nil, errors.New("invalid credentials")
 	}
 
-	token, err := auth.GenerateAccessToken(user.UserID)
+	token, err := auth.GenerateAccessToken(user.UserID, user.Role)
 	if err != nil {
 		return nil, errors.New("failed to generate token")
 	}
@@ -72,28 +86,19 @@ func (r *mutationResolver) Logout(ctx context.Context) (bool, error) {
 }
 
 func (r *queryResolver) FetchUsers(ctx context.Context) ([]*dbmodel.User, error) {
-	userID, ok := auth.GetUserIDFromContext(ctx)
-	if !ok {
+	_, err := auth.GetUserIDFromContext(ctx)
+	if err != nil {
 		return nil, errors.New("unauthenticated")
-	}
-
-	// Check role
-	var user dbmodel.User
-	if err := r.DB.First(&user, "user_id = ?", userID).Error; err != nil {
-		return nil, errors.New("user not found")
-	}
-
-	if user.Role != "manager" {
-		return nil, errors.New("forbidden: only managers can view user list")
 	}
 
 	var users []*dbmodel.User
 	if err := r.DB.Find(&users).Error; err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to fetch users: %w", err)
 	}
 
 	return users, nil
 }
+
 
 // Mutation returns generated.MutationResolver implementation.
 func (r *Resolver) Mutation() generated.MutationResolver { return &mutationResolver{r} }

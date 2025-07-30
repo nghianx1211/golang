@@ -26,6 +26,7 @@ func LoadConfig() (*Config, error) {
 
 	cfg.JWT = JWTConfig{
 		Secret: getEnv("JWT_SECRET", "super-secret-key"),
+		RefreshSecret: getEnv("JWT_REFRESH_SECRET", "super-secret-key"),
 	}
 
 	return cfg, nil
