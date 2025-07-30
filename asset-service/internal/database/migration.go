@@ -1,8 +1,7 @@
 package database
 
 import (
-	"github.com/nghianx1211/golang/internal/model"
-
+	"asset-service/internal/model"
 	"gorm.io/gorm"
 )
 
@@ -14,11 +13,9 @@ func Migrate(db *gorm.DB) error {
 
     // Correct order: parent tables before child tables
     return db.AutoMigrate(
-        &model.User{},
-        &model.Team{},
-        &model.Folder{},
-        &model.Note{},
-        &model.FolderShare{},
-        &model.NoteShare{},
+		&model.Folder{},
+		&model.Note{},
+		&model.FolderShare{},
+		&model.NoteShare{},
     )
 }
