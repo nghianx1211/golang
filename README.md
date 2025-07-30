@@ -241,6 +241,66 @@ query {
 
 ## 1.2 Team Service (Rest API) (GIN + GORM + Postgresql)
 
+```bash
+# 1. Create a team
+curl -X POST http://localhost:8081/api/v1/teams \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN" \
+  -d '{
+    "teamName": "Development Team",
+    "managers": [
+      {
+        "managerId": "4f8ecdb2-be5f-4577-aa8a-5fc331ce6692",
+        "managerName": "Main Manager"
+      }
+    ],
+    "members": [
+      {
+        "memberId": "member-uuid-1",
+        "memberName": "John Doe"
+      },
+      {
+        "memberId": "member-uuid-2",
+        "memberName": "Jane Smith"
+      }
+    ]
+  }'
+
+# 2. Get all teams
+curl -X GET http://localhost:8081/api/v1/teams \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN"
+
+# 3. Get specific team
+curl -X GET http://localhost:8081/api/v1/teams/TEAM_ID \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN"
+
+# 4. Add member to team
+curl -X POST http://localhost:8081/api/v1/teams/TEAM_ID/members \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN" \
+  -d '{
+    "memberId": "new-member-uuid",
+    "memberName": "New Member"
+  }'
+
+# 5. Remove member from team
+curl -X DELETE http://localhost:8081/api/v1/teams/TEAM_ID/members/MEMBER_ID \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN"
+
+# 6. Add manager to team (only main manager can do this)
+curl -X POST http://localhost:8081/api/v1/teams/TEAM_ID/managers \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN" \
+  -d '{
+    "managerId": "new-manager-uuid",
+    "managerName": "New Manager"
+  }'
+
+# 7. Remove manager from team (only main manager can do this)
+curl -X DELETE http://localhost:8081/api/v1/teams/TEAM_ID/managers/MANAGER_ID \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN"
+```
+
 ---
 ## 1.3 Asset Service (Rest API) (GIN + GORM + Postgresql)
 
