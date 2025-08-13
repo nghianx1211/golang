@@ -6,28 +6,32 @@ import (
 
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
-	
+
+	"asset-service/config"
+	"asset-service/internal/database"
 	"asset-service/internal/handler"
 	"asset-service/internal/middleware"
-	route "asset-service/pkg/router"
 	"asset-service/internal/service"
-	"asset-service/config"     
-	"asset-service/internal/database" 
+	route "asset-service/pkg/router"
 )
 
 func main() {
-	// Load cấu hình
+	// Cấu hình format log
+	log.SetFlags(log.Ldate | log.Ltime | log.Lshortfile)
+
+	// Load config
 	cfg, err := config.LoadConfig()
 	if err != nil {
-		log.Fatal("Failed to load config:", err)
+		log.Fatalf("[ERROR] Failed to load config: %v", err)
 	}
 
 	// Kết nối DB & migrate
 	db, err := database.Connect(cfg.Database)
 	if err != nil {
-		log.Fatal("Failed to connect database:", err)
+		log.Fatalf("[ERROR] Failed to connect database: %v", err)
 	}
 	database.Migrate(db)
+	log.Println("[INFO] Database connected and migrated successfully")
 
 	// Initialize service
 	userServiceClient := service.NewUserServiceClient()
@@ -44,7 +48,7 @@ func main() {
 
 	// CORS middleware
 	r.Use(cors.New(cors.Config{
-		AllowOrigins:     []string{"*"}, // Configure as needed
+		AllowOrigins:     []string{"*"}, // TODO: Điều chỉnh cho production
 		AllowMethods:     []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
 		AllowHeaders:     []string{"*"},
 		ExposeHeaders:    []string{"Content-Length"},
@@ -59,17 +63,23 @@ func main() {
 		})
 	})
 
-	// Setup route
+	// Setup routes
 	route.SetupAssetRoutes(r, assetHandler, authMiddleware)
+	log.Println("[INFO] Routes configured successfully")
 
 	// Get port from environment or use default
-	port := os.Getenv("PORT")
-	if port == "" {
-		port = "8082"
-	}
+	port := getEnv("PORT", "8082")
 
-	log.Printf("Asset Management API starting on port %s", port)
+	log.Printf("[INFO] Asset Management API starting on port %s", port)
 	if err := r.Run(":" + port); err != nil {
-		log.Fatal("Failed to start server:", err)
+		log.Fatalf("[ERROR] Failed to start server: %v", err)
 	}
+}
+
+// getEnv gets environment variable with fallback
+func getEnv(key, fallback string) string {
+	if value := os.Getenv(key); value != "" {
+		return value
+	}
+	return fallback
 }

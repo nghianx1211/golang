@@ -305,3 +305,6 @@ curl -X DELETE http://localhost:8081/api/v1/teams/TEAM_ID/managers/MANAGER_ID \
 ## 1.3 Asset Service (Rest API) (GIN + GORM + Postgresql)
 
 
+# Grafana
+
+![alt text](image.png)

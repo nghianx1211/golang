@@ -1,0 +1,60 @@
+# docker-compose.yml
+
+networks:
+  observability:
+    driver: bridge
+
+services:
+  loki:
+    image: grafana/loki:2.9.6
+    command: -config.file=/etc/loki/config.yml
+    ports:
+      - "3100:3100"
+    volumes:
+      - ./loki/config.yml:/etc/loki/config.yml:ro
+      - loki-data:/loki
+    networks:
+      - observability
+
+  promtail:
+    image: grafana/promtail:2.9.6
+    command: -config.file=/etc/promtail/config.yml
+    volumes:
+      # Thư mục log container trong Linux VM của Docker Desktop
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+
+      # Mount thư mục log app Go chạy ngoài Docker (Windows host)
+      - D:\workspace\myown\golang\logs:/var/log/go-app:ro
+
+      # Cấu hình promtail
+      - ./promtail/config.yml:/etc/promtail/config.yml:ro
+
+      # Vị trí lưu state đọc log
+      - promtail-positions:/positions
+    ports:
+      - "9080:9080"
+    depends_on:
+      - loki
+    networks:
+      - observability
+
+  grafana:
+    image: grafana/grafana:11.1.0
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_USERS_DEFAULT_THEME: light
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - grafana-data:/var/lib/grafana
+    depends_on:
+      - loki
+    networks:
+      - observability
+
+volumes:
+  loki-data:
+  promtail-positions:
+  grafana-data:

@@ -1,7 +1,8 @@
 package main
 
 import (
-	"log"
+	"log/slog"
+	"os"
 	"user-service/config"
 	"user-service/graph/generated"
 	"user-service/graph/resolver"
@@ -14,39 +15,46 @@ import (
 )
 
 func main() {
-	// Load cấu hình
+	// Logger JSON cho Promtail
+	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
+		Level: slog.LevelInfo,
+	}))
+
+	// Load config
 	cfg, err := config.LoadConfig()
 	if err != nil {
-		log.Fatal("Failed to load config:", err)
+		logger.Error("Failed to load config", "error", err)
+		os.Exit(1)
 	}
+	logger.Info("Hello Promtail", "service", "user-service")
 
 	// Kết nối DB & migrate
 	db, err := database.Connect(cfg.Database)
 	if err != nil {
-		log.Fatal("Failed to connect database:", err)
+		logger.Error("Failed to connect database", "error", err)
+		os.Exit(1)
 	}
 	database.Migrate(db)
+	logger.Info("Database connected and migrated", "service", "user-service")
 
 	// Init JWT secrets
 	auth.Init(cfg.JWT.Secret, cfg.JWT.RefreshSecret)
+	logger.Info("JWT secrets initialized", "service", "user-service")
 
-	// Tạo GraphQL server
+	// GraphQL server
 	srv := handler.NewDefaultServer(generated.NewExecutableSchema(generated.Config{
-		Resolvers: &resolver.Resolver{
-			DB: db,
-		},
+		Resolvers: &resolver.Resolver{DB: db},
 	}))
 
-	// Tạo router Gin
+	// Gin router
 	r := gin.Default()
-
-	// Public route: Playground
 	r.GET("/graphql", gin.WrapH(playground.Handler("GraphQL Playground", "/query")))
-
-	// Protected route: chỉ Manager mới được vào
 	r.POST("/query", auth.AuthMiddleware(), gin.WrapH(srv))
 
 	// Start server
-	log.Println("Server started at http://localhost:8080")
-	log.Fatal(r.Run(":8080"))
+	logger.Info("Server started", "url", "http://localhost:8080", "service", "user-service")
+	if err := r.Run(":8080"); err != nil {
+		logger.Error("Failed to start server", "error", err)
+		os.Exit(1)
+	}
 }

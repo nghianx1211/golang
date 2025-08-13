@@ -1,45 +1,52 @@
 package main
 
 import (
-	"log"
 	"os"
-
-	"team-service/internal/handler"   
-	"team-service/internal/model"     
-	"team-service/config"     
-	"team-service/internal/database"     
-	route "team-service/pkg/router"     
-	"team-service/internal/service"   
+	"team-service/config"
+	"team-service/internal/database"
+	"team-service/internal/handler"
+	"team-service/internal/model"
+	"team-service/internal/service"
+	route "team-service/pkg/router"
 
 	"github.com/gin-gonic/gin"
+	"github.com/sirupsen/logrus"
 	"gorm.io/gorm"
 )
 
+var log = logrus.New()
+
 func main() {
-	// Load cấu hình
+	// Setup log format JSON
+	log.SetFormatter(&logrus.JSONFormatter{})
+	log.SetOutput(os.Stdout)
+	log.SetLevel(logrus.InfoLevel)
+
+	// Load config
 	cfg, err := config.LoadConfig()
 	if err != nil {
-		log.Fatal("Failed to load config:", err)
+		log.WithError(err).Fatal("Failed to load config")
 	}
 
-	// Kết nối DB & migrate
+	// Connect DB & migrate
 	db, err := database.Connect(cfg.Database)
 	if err != nil {
-		log.Fatal("Failed to connect database:", err)
+		log.WithError(err).Fatal("Failed to connect database")
 	}
 	database.Migrate(db)
+	log.Info("Database connected and migrated successfully")
 
-	// Initialize service
+	// Initialize services
 	userServiceClient := service.NewUserServiceClient(getEnv("USER_SERVICE_URL", "http://localhost:8080"))
 	teamService := service.NewTeamService(db, userServiceClient)
 
 	// Initialize handler
 	teamHandler := handler.NewTeamHandler(teamService)
 
-	// Initialize Gin router
+	// Initialize router
 	router := gin.Default()
 
-	// Add CORS middleware if needed
+	// CORS middleware
 	router.Use(func(c *gin.Context) {
 		c.Header("Access-Control-Allow-Origin", "*")
 		c.Header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
@@ -49,26 +56,27 @@ func main() {
 			c.AbortWithStatus(204)
 			return
 		}
-
 		c.Next()
 	})
 
-	// Setup router
+	// Setup routes
 	jwtSecret := getEnv("JWT_SECRET", "your-secret-key")
 	route.SetupTeamRouter(router, teamHandler, jwtSecret)
 
-	// Health check endpoint
+	// Health check
 	router.GET("/health", func(c *gin.Context) {
+		log.Info("Health check endpoint called")
 		c.JSON(200, gin.H{"status": "ok"})
 	})
 
 	// Start server
 	port := getEnv("PORT", "8081")
-	log.Printf("Server starting on port %s", port)
-	log.Fatal(router.Run(":" + port))
+	log.WithField("port", port).Info("Server starting")
+	if err := router.Run(":" + port); err != nil {
+		log.WithError(err).Fatal("Server failed to start")
+	}
 }
 
-// runMigrations runs database migrations
 func runMigrations(db *gorm.DB) error {
 	return db.AutoMigrate(
 		&model.Team{},
@@ -77,7 +85,6 @@ func runMigrations(db *gorm.DB) error {
 	)
 }
 
-// getEnv gets environment variable with fallback
 func getEnv(key, fallback string) string {
 	if value := os.Getenv(key); value != "" {
 		return value
