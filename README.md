@@ -303,7 +303,53 @@ curl -X DELETE http://localhost:8081/api/v1/teams/TEAM_ID/managers/MANAGER_ID \
 
 ---
 ## 1.3 Asset Service (Rest API) (GIN + GORM + Postgresql)
+## Features
+- **Folder Management**
+  - Create, update, delete folders.
+  - Retrieve folder details (with notes, shares).
+- **Note Management**
+  - Create, update, delete notes.
+  - Retrieve note details.
+- **Sharing**
+  - Share/unshare folders or notes with specific users.
+  - Permission support: `read` or `write`.
+- **Team & User Assets**
+  - Retrieve all assets for a given team.
+  - Retrieve all assets for a specific user (manager-only).
+- **Security**
+  - JWT validation via User Service.
+  - Role-based access (`manager` vs regular user).
+- **Event Streaming (Kafka)**
+  - Emits asset change events to Kafka topic `asset.changes`.
+- **Caching (Redis)**
+  - Real-time asset metadata cache (`folder:{id}`, `note:{id}`).
+  - Access control cache (`asset:{id}:acl`).
 
+## API Endpoints
+
+### Folder
+- `POST /folders` → create folder  
+- `GET /folders/:folderId` → get folder  
+- `PUT /folders/:folderId` → update folder  
+- `DELETE /folders/:folderId` → delete folder  
+
+### Note
+- `POST /folders/:folderId/notes` → create note  
+- `GET /notes/:noteId` → get note  
+- `PUT /notes/:noteId` → update note  
+- `DELETE /notes/:noteId` → delete note  
+
+### Sharing
+- `POST /folders/:folderId/share` → share folder  
+- `DELETE /folders/:folderId/share/:userId` → revoke folder sharing  
+- `POST /notes/:noteId/share` → share note  
+- `DELETE /notes/:noteId/share/:userId` → revoke note sharing  
+
+### Manager APIs
+- `GET /teams/:teamId/assets` → get all assets of a team  
+- `GET /users/:userId/assets` → get all assets of a user (manager only)  
+
+---
 
 # Grafana
 
