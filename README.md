@@ -308,3 +308,6 @@ curl -X DELETE http://localhost:8081/api/v1/teams/TEAM_ID/managers/MANAGER_ID \
 # Grafana
 
 ![alt text](image.png)
+
+# Example for kafka and redis
+[Watch Demo](./kafka-video.mp4)
