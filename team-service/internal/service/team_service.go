@@ -1,24 +1,30 @@
 package service
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
+	"team-service/internal/messaging"
 	"team-service/internal/model"
+
+	"github.com/redis/go-redis/v9"
 	"gorm.io/gorm"
 )
 
 type TeamService struct {
-	db                *gorm.DB
-	userServiceClient *UserServiceClient
+    db                *gorm.DB
+    userServiceClient *UserServiceClient
+    kafka             *messaging.KafkaProducer
+    redis             *redis.Client
 }
 
-func NewTeamService(db *gorm.DB, userServiceClient *UserServiceClient) *TeamService {
-	return &TeamService{
-		db:                db,
-		userServiceClient: userServiceClient,
-	}
+
+func NewTeamService(db *gorm.DB, userServiceClient *UserServiceClient, 
+    kafka *messaging.KafkaProducer, redis *redis.Client) *TeamService {
+    return &TeamService{db: db, userServiceClient: userServiceClient, kafka: kafka, redis: redis}
 }
 
 func (s *TeamService) CreateTeam(req *model.CreateTeamRequest, token string) (*model.Team, error) {
@@ -91,6 +97,19 @@ func (s *TeamService) CreateTeam(req *model.CreateTeamRequest, token string) (*m
 	}
 
 	// Load the complete team with managers and members
+	event := map[string]interface{}{
+		"eventType":  "TEAM_CREATED",
+		"teamId":     team.TeamID,
+		"performedBy": req.Managers[0].ManagerID, // assume first manager is creator
+		"timestamp":  time.Now().UTC().Format(time.RFC3339),
+	}
+	_ = s.kafka.Publish(context.Background(), team.TeamID, event)
+
+	key := fmt.Sprintf("team:%s:members", team.TeamID)
+	for _, m := range req.Members {
+		s.redis.SAdd(context.Background(), key, m.MemberID)
+	}
+
 	return s.GetTeamByID(team.TeamID)
 }
 
@@ -136,7 +155,25 @@ func (s *TeamService) AddMember(teamID string, req *model.AddMemberRequest, curr
 		MemberName: req.MemberName,
 	}
 
-	return s.db.Create(&member).Error
+    err = s.db.Create(&member).Error
+    if err != nil {
+        return err
+    }
+
+    event := map[string]interface{}{
+        "eventType":   "MEMBER_ADDED",
+        "teamId":      teamID,
+        "performedBy": currentUserID,
+        "targetUserId": req.MemberID,
+        "timestamp":   time.Now().UTC().Format(time.RFC3339),
+    }
+    _ = s.kafka.Publish(context.Background(), teamID, event)
+
+    // ✅ Update Redis cache
+    key := fmt.Sprintf("team:%s:members", teamID)
+    s.redis.SAdd(context.Background(), key, req.MemberID)
+
+    return nil
 }
 
 func (s *TeamService) RemoveMember(teamID, memberID, currentUserID string) error {
@@ -152,6 +189,18 @@ func (s *TeamService) RemoveMember(teamID, memberID, currentUserID string) error
 	if result.RowsAffected == 0 {
 		return errors.New("member not found in team")
 	}
+
+	event := map[string]interface{}{
+		"eventType":   "MEMBER_REMOVED",
+		"teamId":      teamID,
+		"performedBy": currentUserID,
+		"targetUserId": memberID,
+		"timestamp":   time.Now().UTC().Format(time.RFC3339),
+	}
+	_ = s.kafka.Publish(context.Background(), teamID, event)
+
+	key := fmt.Sprintf("team:%s:members", teamID)
+	s.redis.SRem(context.Background(), key, memberID)
 
 	return nil
 }
@@ -186,7 +235,20 @@ func (s *TeamService) AddManager(teamID string, req *model.AddManagerRequest, cu
 		IsMain:      false, // Only one main manager per team
 	}
 
-	return s.db.Create(&manager).Error
+	if err := s.db.Create(&manager).Error; err != nil {
+		return err
+	}
+
+	event := map[string]interface{}{
+		"eventType":   "MANAGER_ADDED",
+		"teamId":      teamID,
+		"performedBy": currentUserID,
+		"targetUserId": req.ManagerID,
+		"timestamp":   time.Now().UTC().Format(time.RFC3339),
+	}
+	_ = s.kafka.Publish(context.Background(), teamID, event)
+
+	return nil
 }
 
 func (s *TeamService) RemoveManager(teamID, managerID, currentUserID string) error {
@@ -197,16 +259,27 @@ func (s *TeamService) RemoveManager(teamID, managerID, currentUserID string) err
 
 	// Cannot remove main manager
 	var manager model.Manager
-	result := s.db.Where("team_id = ? AND manager_id = ?", teamID, managerID).First(&manager)
-	if result.Error != nil {
-		return errors.New("manager not found in team")
+	if err := s.db.Where("team_id = ? AND manager_id = ?", teamID, managerID).First(&manager).Error; err != nil {
+		return errors.New("manager not found")
 	}
-
 	if manager.IsMain {
 		return errors.New("cannot remove main manager")
 	}
 
-	return s.db.Where("team_id = ? AND manager_id = ?", teamID, managerID).Delete(&model.Manager{}).Error
+	if err := s.db.Delete(&manager).Error; err != nil {
+		return err
+	}
+
+	event := map[string]interface{}{
+		"eventType":   "MANAGER_REMOVED",
+		"teamId":      teamID,
+		"performedBy": currentUserID,
+		"targetUserId": managerID,
+		"timestamp":   time.Now().UTC().Format(time.RFC3339),
+	}
+	_ = s.kafka.Publish(context.Background(), teamID, event)
+
+	return nil
 }
 
 func (s *TeamService) isManagerOfTeam(userID, teamID string) bool {

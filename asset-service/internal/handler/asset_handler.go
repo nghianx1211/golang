@@ -168,7 +168,6 @@ func (h *AssetHandler) UpdateNote(c *gin.Context) {
 
 	userID, _ := middleware.GetUserID(c)
 	userRole, _ := middleware.GetUserRole(c)
-
 	note, err := h.assetService.UpdateNote(noteID, &req, userID, userRole)
 	if err != nil {
 		c.JSON(http.StatusForbidden, gin.H{"error": err.Error()})

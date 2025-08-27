@@ -1,22 +1,28 @@
 package service
 
 import (
-	"fmt"
-	"github.com/google/uuid"
-	"gorm.io/gorm"
+	"asset-service/internal/messaging"
 	"asset-service/internal/model"
+	"context"
+	"encoding/json"
+	"fmt"
+	"time"
+
+	"github.com/google/uuid"
+	"github.com/redis/go-redis/v9"
+	"gorm.io/gorm"
 )
 
 type AssetService struct {
-	db               *gorm.DB
-	userServiceClient *UserServiceClient
+    db                *gorm.DB
+    userServiceClient *UserServiceClient
+    kafka             *messaging.KafkaProducer
+    redis             *redis.Client
 }
 
-func NewAssetService(db *gorm.DB, userServiceClient *UserServiceClient) *AssetService {
-	return &AssetService{
-		db:               db,
-		userServiceClient: userServiceClient,
-	}
+func NewAssetService(db *gorm.DB, userServiceClient *UserServiceClient,
+    kafka *messaging.KafkaProducer, redis *redis.Client) *AssetService {
+    return &AssetService{db: db, userServiceClient: userServiceClient, kafka: kafka, redis: redis}
 }
 
 // Folder CRUD Operations
@@ -30,6 +36,20 @@ func (s *AssetService) CreateFolder(req *model.CreateFolderRequest, ownerID uuid
 	if err := s.db.Create(folder).Error; err != nil {
 		return nil, fmt.Errorf("failed to create folder: %w", err)
 	}
+
+	event := map[string]interface{}{
+		"eventType": "FOLDER_CREATED",
+		"assetType": "folder",
+		"assetId":   folder.ID.String(),
+		"ownerId":   folder.OwnerID.String(),
+		"actionBy":  ownerID.String(),
+		"timestamp": time.Now().UTC().Format(time.RFC3339),
+	}
+	_ = s.kafka.Publish(context.Background(), folder.ID.String(), event)
+
+	key := fmt.Sprintf("folder:%s", folder.ID.String())
+	data, _ := json.Marshal(folder)
+	s.redis.Set(context.Background(), key, data, 0)
 
 	return s.folderToResponse(folder), nil
 }
@@ -103,6 +123,19 @@ func (s *AssetService) DeleteFolder(folderID uuid.UUID, userID uuid.UUID, userRo
 	if err := s.db.Delete(&folder).Error; err != nil {
 		return fmt.Errorf("failed to delete folder: %w", err)
 	}
+
+	event := map[string]interface{}{
+		"eventType": "FOLDER_DELETED",
+		"assetType": "folder",
+		"assetId":   folder.ID.String(),
+		"ownerId":   folder.OwnerID.String(),
+		"actionBy":  userID.String(),
+		"timestamp": time.Now().UTC().Format(time.RFC3339),
+	}
+	_ = s.kafka.Publish(context.Background(), folder.ID.String(), event)
+
+	key := fmt.Sprintf("folder:%s", folder.ID.String())
+	s.redis.Del(context.Background(), key)
 
 	return nil
 }
@@ -190,8 +223,23 @@ func (s *AssetService) UpdateNote(noteID uuid.UUID, req *model.UpdateNoteRequest
 	if err := s.db.Save(&note).Error; err != nil {
 		return nil, fmt.Errorf("failed to update note: %w", err)
 	}
+	
+    event := map[string]interface{}{
+        "eventType": "NOTE_UPDATED",
+        "assetType": "note",
+        "assetId":   note.ID.String(),
+        "ownerId":   note.OwnerID.String(),
+        "actionBy":  userID.String(),
+        "timestamp": time.Now().UTC().Format(time.RFC3339),
+    }
+    _ = s.kafka.Publish(context.Background(), note.ID.String(), event)
 
-	return s.noteToResponse(&note), nil
+    // ✅ Update Redis metadata cache
+    key := fmt.Sprintf("note:%s", note.ID.String())
+    data, _ := json.Marshal(note)
+    s.redis.Set(context.Background(), key, data, 0)
+
+    return s.noteToResponse(&note), nil
 }
 
 func (s *AssetService) DeleteNote(noteID uuid.UUID, userID uuid.UUID, userRole string) error {
@@ -210,6 +258,19 @@ func (s *AssetService) DeleteNote(noteID uuid.UUID, userID uuid.UUID, userRole s
 	if err := s.db.Delete(&note).Error; err != nil {
 		return fmt.Errorf("failed to delete note: %w", err)
 	}
+
+	event := map[string]interface{}{
+		"eventType": "NOTE_DELETED",
+		"assetType": "note",
+		"assetId":   note.ID.String(),
+		"ownerId":   note.OwnerID.String(),
+		"actionBy":  userID.String(),
+		"timestamp": time.Now().UTC().Format(time.RFC3339),
+	}
+	_ = s.kafka.Publish(context.Background(), note.ID.String(), event)
+
+	key := fmt.Sprintf("note:%s", note.ID.String())
+	s.redis.Del(context.Background(), key)
 
 	return nil
 }
@@ -246,8 +307,25 @@ func (s *AssetService) ShareFolder(folderID uuid.UUID, req *model.ShareRequest, 
 		Permission: req.Permission,
 		SharedBy:   sharedBy,
 	}
+	if err := s.db.Create(share).Error; err != nil {
+		return err
+	}
 
-	return s.db.Create(share).Error
+	event := map[string]interface{}{
+		"eventType": "FOLDER_SHARED",
+		"assetType": "folder",
+		"assetId":   folderID.String(),
+		"ownerId":   sharedBy.String(),
+		"targetUserId": req.UserID.String(),
+		"permission": req.Permission,
+		"timestamp": time.Now().UTC().Format(time.RFC3339),
+	}
+	_ = s.kafka.Publish(context.Background(), folderID.String(), event)
+
+	aclKey := fmt.Sprintf("asset:%s:acl", folderID.String())
+	s.redis.HSet(context.Background(), aclKey, req.UserID.String(), req.Permission)
+
+	return nil
 }
 
 func (s *AssetService) RevokeFolderSharing(folderID uuid.UUID, targetUserID uuid.UUID, ownerID uuid.UUID) error {
@@ -260,7 +338,24 @@ func (s *AssetService) RevokeFolderSharing(folderID uuid.UUID, targetUserID uuid
 		return fmt.Errorf("failed to find folder: %w", err)
 	}
 
-	return s.db.Where("folder_id = ? AND user_id = ?", folderID, targetUserID).Delete(&model.FolderShare{}).Error
+	if err := s.db.Where("folder_id = ? AND user_id = ?", folderID, targetUserID).Delete(&model.FolderShare{}).Error; err != nil {
+		return err
+	}
+
+	event := map[string]interface{}{
+		"eventType":   "FOLDER_UNSHARED",
+		"assetType":   "folder",
+		"assetId":     folderID.String(),
+		"ownerId":     ownerID.String(),
+		"targetUserId": targetUserID.String(),
+		"timestamp":   time.Now().UTC().Format(time.RFC3339),
+	}
+	_ = s.kafka.Publish(context.Background(), folderID.String(), event)
+
+	aclKey := fmt.Sprintf("asset:%s:acl", folderID.String())
+	s.redis.HDel(context.Background(), aclKey, targetUserID.String())
+
+	return nil
 }
 
 func (s *AssetService) ShareNote(noteID uuid.UUID, req *model.ShareRequest, sharedBy uuid.UUID, token string) error {
@@ -295,7 +390,25 @@ func (s *AssetService) ShareNote(noteID uuid.UUID, req *model.ShareRequest, shar
 		SharedBy:   sharedBy,
 	}
 
-	return s.db.Create(share).Error
+	if err := s.db.Create(share).Error; err != nil {
+		return err
+	}
+
+	event := map[string]interface{}{
+		"eventType": "NOTE_SHARED",
+		"assetType": "note",
+		"assetId":   noteID.String(),
+		"ownerId":   sharedBy.String(),
+		"targetUserId": req.UserID.String(),
+		"permission": req.Permission,
+		"timestamp": time.Now().UTC().Format(time.RFC3339),
+	}
+	_ = s.kafka.Publish(context.Background(), noteID.String(), event)
+
+	aclKey := fmt.Sprintf("asset:%s:acl", noteID.String())
+	s.redis.HSet(context.Background(), aclKey, req.UserID.String(), req.Permission)
+
+	return nil
 }
 
 func (s *AssetService) RevokeNoteSharing(noteID uuid.UUID, targetUserID uuid.UUID, ownerID uuid.UUID) error {
@@ -308,7 +421,24 @@ func (s *AssetService) RevokeNoteSharing(noteID uuid.UUID, targetUserID uuid.UUI
 		return fmt.Errorf("failed to find note: %w", err)
 	}
 
-	return s.db.Where("note_id = ? AND user_id = ?", noteID, targetUserID).Delete(&model.NoteShare{}).Error
+	if err := s.db.Where("note_id = ? AND user_id = ?", noteID, targetUserID).Delete(&model.NoteShare{}).Error; err != nil {
+		return err
+	}
+
+	event := map[string]interface{}{
+		"eventType":   "NOTE_UNSHARED",
+		"assetType":   "note",
+		"assetId":     noteID.String(),
+		"ownerId":     ownerID.String(),
+		"targetUserId": targetUserID.String(),
+		"timestamp":   time.Now().UTC().Format(time.RFC3339),
+	}
+	_ = s.kafka.Publish(context.Background(), noteID.String(), event)
+
+	aclKey := fmt.Sprintf("asset:%s:acl", noteID.String())
+	s.redis.HDel(context.Background(), aclKey, targetUserID.String())
+
+	return nil
 }
 
 // Manager-only Operations

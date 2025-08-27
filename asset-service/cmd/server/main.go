@@ -10,6 +10,7 @@ import (
 	"asset-service/config"
 	"asset-service/internal/database"
 	"asset-service/internal/handler"
+	"asset-service/internal/messaging"
 	"asset-service/internal/middleware"
 	"asset-service/internal/service"
 	route "asset-service/pkg/router"
@@ -33,9 +34,15 @@ func main() {
 	database.Migrate(db)
 	log.Println("[INFO] Database connected and migrated successfully")
 
+	redisClient := messaging.NewRedisClient(getEnv("REDIS_ADDR", "localhost:6379"))
+	assetProducer := messaging.NewKafkaProducer(
+		getEnv("KAFKA_BROKER", "localhost:9092"),
+		"asset.changes",
+	)
+
 	// Initialize service
 	userServiceClient := service.NewUserServiceClient()
-	assetService := service.NewAssetService(db, userServiceClient)
+	assetService := service.NewAssetService(db, userServiceClient, assetProducer, redisClient)
 
 	// Initialize handler
 	assetHandler := handler.NewAssetHandler(assetService)

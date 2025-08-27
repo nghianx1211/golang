@@ -5,6 +5,7 @@ import (
 	"team-service/config"
 	"team-service/internal/database"
 	"team-service/internal/handler"
+	"team-service/internal/messaging"
 	"team-service/internal/model"
 	"team-service/internal/service"
 	route "team-service/pkg/router"
@@ -36,9 +37,14 @@ func main() {
 	database.Migrate(db)
 	log.Info("Database connected and migrated successfully")
 
+	redisClient := messaging.NewRedisClient(getEnv("REDIS_ADDR", "localhost:6379"))
+	teamProducer := messaging.NewKafkaProducer(
+		getEnv("KAFKA_BROKER", "localhost:9092"),
+		"team.activity",
+	)
 	// Initialize services
 	userServiceClient := service.NewUserServiceClient(getEnv("USER_SERVICE_URL", "http://localhost:8080"))
-	teamService := service.NewTeamService(db, userServiceClient)
+	teamService := service.NewTeamService(db, userServiceClient, teamProducer, redisClient)
 
 	// Initialize handler
 	teamHandler := handler.NewTeamHandler(teamService)
